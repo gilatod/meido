@@ -1,22 +1,25 @@
 local guard = require("meido.guard")
 local meta = {}
 
-local readonly_meta = {
-    __metatable = "readonly",
+local ungrowable_meta = {
+    __metatable = "ungrowable",
     __newindex = function()
-        error("this table is read-only", 2)
+        error("this table is ungrowable", 2)
     end
 }
 
-meta.readonly = function(t)
+meta.ungrowable = function(t)
     guard.table("t", t)
-    if getmetatable(t) == "readonly" then
+    local mt = getmetatable(t)
+    if mt == "ungrowable" then
         return t
+    elseif mt then
+        error("table has another metatable")
     end
-    return setmetatable(t, readonly_meta)
+    return setmetatable(t, ungrowable_meta)
 end
 
-meta.accessor = function(t)
+meta.readonly = function(t)
     guard.table("t", t)
     return setmetatable({}, {
         __metatable = "readonly",
@@ -25,19 +28,22 @@ meta.accessor = function(t)
         end,
         __newindex = function()
             error("this table is read-only", 2)
-        end
+        end,
+        __pairs = function() return pairs(t) end,
+        __ipairs = function() return ipairs(t) end
     })
 end
 
-meta.writeonly = function(t, on_write)
-    guard.callable("on_write", on_write)
-    return setmetatable(t, {
+meta.writeonly = function(t, write)
+    guard.table("t", t)
+    guard.callable("write", write)
+    return setmetatable({}, {
         __metatable = "writeonly",
         __index = function()
             error("this table is write-only", 2)
         end,
         __newindex = function(t, k, v)
-            on_write(t, k, v)
+            write(t, k, v)
         end
     })
 end

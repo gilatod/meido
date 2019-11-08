@@ -218,6 +218,7 @@ end
 
 guard.callable   = create_table_guard("function", "__call", "be callable")
 guard.concatable = create_table_guard("string", "__concat", "be concatable")
+guard.interable  = create_table_guard("table", "__pairs", "be interable")
 guard.can_add    = create_table_guard("number", "__add", "support addition")
 guard.can_sub    = create_table_guard("number", "__sub", "support subtraction")
 guard.can_mul    = create_table_guard("number", "__mul", "support multiplication")

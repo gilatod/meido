@@ -1,6 +1,5 @@
 local guard = require("meido.guard")
 local object = require("meido.object")
-local seq = require("meido.seq")
 
 local show = object.show
 local clone = object.clone
@@ -96,13 +95,12 @@ local function foreach_arg(self, arguments, f)
         end
     else
         guard.table("arguments", arguments)
-        guard.callable("arguments:iter", arguments.iter)
     end
 
     local count = 1
     local max_argument_count = spec.max_argument_count
 
-    for arg in arguments:iter() do
+    for arg in pairs(arguments) do
         if count > max_argument_count then
             return
         end

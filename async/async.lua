@@ -67,7 +67,7 @@ function cancellation_token:cancel()
 end
 
 local cancelled_token = setmetatable({
-    on_cancelled = meta.readonly {},
+    on_cancelled = meta.ungrowable {},
     is_cancelled = is_cancelled_true
 }, cancellation_token)
 

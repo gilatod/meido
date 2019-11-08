@@ -4,6 +4,7 @@ local object = require("meido.object")
 local array = require("meido.array")
 
 local clear = array.clear
+local ungrowable = meta.ungrowable
 local readonly = meta.readonly
 local format = string.format
 local concat = table.concat
@@ -21,11 +22,11 @@ if math_type == nil then
     end
 end
 
-local EMPTY_TABLE = readonly {}
+local EMPTY_TABLE = ungrowable {}
 local ID_FUNC = function(...) return ... end
 
-local NO_DEFAULT = readonly {}
-local FAILED_PATTERN_INDEX = readonly {}
+local NO_DEFAULT = ungrowable {}
+local FAILED_PATTERN_INDEX = ungrowable {}
 
 local pattern = setmetatable({}, {
     __call = function(self, category, default, desc_func, match_func)
@@ -160,9 +161,26 @@ pattern.no_default = function(pat)
         "invalid pattern")
 
     local new_pat = pattern("no_default", NO_DEFAULT,
+        function() return format("no_default[%s]", pat) end,
+        function(v, c, s) return pat:match(v, c, s) end)
+    
+    function new_pat:get_raw_pattern()
+        return pat
+    end
+
+    return new_pat
+end
+
+pattern.with_default = function(pat, default)
+    assert(getmetatable(pat) == pattern,
+        "invalid pattern")
+    assert(pat:match(default),
+        "invalid default value")
+
+    local new_pat = pattern("with_default", default,
         function()
-            return format("no_default[%s]",
-                pat:get_description())
+            return format("with_default[%s, %s]",
+                pat, default)
         end,
         function(v, c, s) return pat:match(v, c, s) end)
     
@@ -190,7 +208,7 @@ pattern.named = function(name, pat)
 end
 
 pattern.union = function(...)
-    local subpats = readonly {...}
+    local subpats = {...}
     if #subpats == 0 then
         error("no subpattern provided")
     end
@@ -233,14 +251,14 @@ pattern.union = function(...)
         end)
     
     function pat:get_subpatterns()
-        return subpats
+        return readonly(subpats)
     end
 
     return pat
 end
 
 pattern.intersect = function(...)
-    local subpats = readonly {...}
+    local subpats = {...}
     if #subpats == 0 then
         error("no subpattern provided")
     end
@@ -290,7 +308,7 @@ pattern.intersect = function(...)
         end)
     
     function pat:get_subpatterns()
-        return subpats
+        return readonly(subpats)
     end
 
     return pat
@@ -313,10 +331,7 @@ pattern.recurse = function(name, pattern_creator)
         "invalid pattern creator")
 
     return pattern("recurse", pat.default,
-        function()
-            return format("%s : %s",
-                name, pat:get_description())
-        end,
+        function() return format("%s : %s", name, pat) end,
         function(v, c, s)
             return pat:match(v, c, s)
         end)
@@ -324,17 +339,32 @@ end
 
 -- nilable patterns
 
-local function nilable_pattern(type_name)
+local function basic_nilable(type_name)
     return pattern("nilable", nil,
         function() return type_name.."?" end,
         function(v) return v == nil or type(v) == type_name end)
 end
 
-pattern.STRING_OR_NIL   = nilable_pattern("string")
-pattern.NUMBER_OR_NIL   = nilable_pattern("number")
-pattern.TABLE_OR_NIL    = nilable_pattern("table")
-pattern.FUNCTION_OR_NIL = nilable_pattern("function")
-pattern.BOOLEAN_OR_NIL  = nilable_pattern("boolean")
+pattern.STRING_OR_NIL   = basic_nilable("string")
+pattern.NUMBER_OR_NIL   = basic_nilable("number")
+pattern.TABLE_OR_NIL    = basic_nilable("table")
+pattern.FUNCTION_OR_NIL = basic_nilable("function")
+pattern.BOOLEAN_OR_NIL  = basic_nilable("boolean")
+
+pattern.nilable = function(pat)
+    assert(getmetatable(pat) == pattern,
+        "invalid pattern")
+    
+    local new_pat = pattern("nilable", nil,
+        function() return format("nilable[%s]", pat) end,
+        function(v, c, s) return v == nil or pat:match(v, c, s) end)
+    
+    function new_pat:get_raw_pattern()
+        return pat
+    end
+
+    return new_pat
+end
 
 -- numeric patterns
 
@@ -512,8 +542,6 @@ pattern.enum = function(items)
         item_map[item] = i
     end
 
-    readonly(item_arr)
-
     local pat = pattern("enum", items[1],
         function()
             local res = {"("}
@@ -536,7 +564,7 @@ pattern.enum = function(items)
         end)
     
     function pat:get_items()
-        return item_arr
+        return readonly(item_arr)
     end
 
     return pat
@@ -609,7 +637,7 @@ pattern.map = function(key_pattern, value_pattern)
 end
 
 pattern.tuple = function(...)
-    local subpats = readonly {...}
+    local subpats = {...}
     if #subpats == 0 then
         error("no subpattern provided")
     end
@@ -631,7 +659,6 @@ pattern.tuple = function(...)
         for i = 1, #subpats do
             default[i] = subpats[i]:get_default()
         end
-        readonly(default)
     end
 
     local pat = pattern("tuple", default,
@@ -657,7 +684,7 @@ pattern.tuple = function(...)
         end)
     
     function pat:get_subpatterns()
-        return subpats
+        return readnoly(subpats)
     end
 
     return pat
@@ -681,14 +708,11 @@ pattern.table = function(entries)
         end
     end
 
-    readonly(entries_cpy)
-
     if default ~= NO_DEFAULT then
         default = {}
-        for key, value_pat in pairs(entires) do
+        for key, value_pat in pairs(entries) do
             default[key] = value_pat:get_default()
         end
-        readonly(default)
     end
 
     local pat = pattern("table", default,
@@ -710,11 +734,8 @@ pattern.table = function(entries)
 
             for key, value_pat in pairs(entries_cpy) do
                 local value = v[key]
-                if value then
-                    if not value_pat:match(value, c, s) then
-                        return false
-                    end
-                elseif not value_pat:has_default() then
+                if not value_pat:match(value, c, s) then
+                    print(key, value)
                     return false
                 end
             end
@@ -722,14 +743,14 @@ pattern.table = function(entries)
         end)
     
     function pat:get_entries()
-        return entries_cpy
+        return readonly(entries_cpy)
     end
 
     return pat
 end
 
 pattern.loop = function(...)
-    local subpats = readonly {...}
+    local subpats = {...}
     if #subpats == 0 then
         error("no subpattern provided")
     end
@@ -772,7 +793,7 @@ pattern.loop = function(...)
         end)
     
     function pat:get_subpatterns()
-        return subpats
+        return readonly(subpats)
     end
 
     return pat

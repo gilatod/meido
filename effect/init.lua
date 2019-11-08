@@ -1,2 +1,2 @@
 local folder = (...):gsub("%.init$", "")
-return require(folder..".seq")
+return require(folder..".effect")
